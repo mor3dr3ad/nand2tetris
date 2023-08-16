@@ -1,0 +1,123 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/05/CPU.hdl
+
+/**
+ * The Hack CPU (Central Processing unit), consisting of an ALU,
+ * two registers named A and D, and a program counter named PC.
+ * The CPU is designed to fetch and execute instructions written in 
+ * the Hack machine language. In particular, functions as follows:
+ * Executes the inputted instruction according to the Hack machine 
+ * language specification.
+ * - The D and A in the language specification refer to CPU-resident registers,
+ * - while M refers to the external memory location addressed by A, i.e. to Memory[A].
+ * - The inM input holds the value of this location.
+ * If the current instruction needs to write a value to M,
+ * - the value is placed in outM,
+ * - the address of the target location is placed in the addressM output,
+ * - and the writeM control bit is asserted. (When writeM==0, any value may 
+ * appear in outM).
+ * - The outM and writeM outputs are combinational: they are affected instantaneously by the execution of the current  instruction.
+ * The addressM and pc outputs are clocked: although they 
+ * are affected by the execution of the current instruction, they commit 
+ * to their new values only in the next time step. If reset==1 then the 
+ * CPU jumps to address 0 (i.e. pc is set to 0 in next time step) rather 
+ * than to the address resulting from executing the current instruction. 
+ */
+
+CHIP CPU {
+
+    IN  inM[16],         // M value input  (M = contents of RAM[A])
+        instruction[16], // Instruction for execution
+        reset;           // Signals whether to re-start the current
+                         // program (reset==1) or continue executing
+                         // the current program (reset==0).
+
+    OUT outM[16],        // M value output
+        writeM,          // Write to M? 
+        addressM[15],    // Address in data memory (of M)
+        pc[15];          // address of next instruction
+
+    PARTS:
+    // A or C instruction? -> first (or actually last) bit tells us whether it is an A or C instruction
+    Not(in=instruction[15],out=abit);
+    
+    // handle A-register:
+    // if abit=1, we want the input to come from the instruction. If not, it should come from the ALU output. 
+    Mux16(a=aluout,b[15]=false,b[0..14]=instruction[0..14],sel=abit,out=inA);
+
+    // we only write to A-register, if the d1 bit of the C-instruction is set, so check for instruction[5]
+    Or(a=abit,b=instruction[5],out=loada);
+
+    // inA is at this point either aout (if it is a c instruction) or the last 15 bits of the A instruction
+    ARegister(in=inA, load=loada, out=aout, out[0..14]=addressM);
+
+    // handle D-Register: 
+    // the C control bit is instruction[4], check this beside instruction[15]  
+    And(a=instruction[4],b=instruction[15],out=loadd);
+    DRegister(in=aluout,load=loadd,out=dout);
+
+    //handle memory input -> the 'a' bit = instruction[12] decides whether this bit is inM or aout
+    Mux16(a=aout,b=inM,sel=instruction[12],out=mout);
+
+    //Program Counter
+    // condition for increasing the PC by 1? -> no jump. set this as default by setting=true
+    PC(in=aout,load=loadaddress,inc=true,reset=reset,out[0..14]=pc);
+
+    //ALU
+    //remember: c instruction
+    // |15|14|13|12|11|10| 9| 8| 7| 6| 5| 4| 3| 2| 1| 0| 
+    // | 1| 1| 1| a|c1|c2|c3|c4|c5|c6|d1|d2|d3|j1|j2|j3|
+    // where [15] is the a/c bit, [14] and [13] are unused
+    // [12] through [6] are the computation bits
+    // [5],[4] and [3] are the destination bits and
+    // [2], [1] and [0] are the jump bits
+    // j1 specifies to jump when the result of the computation is <0
+    // j2 specifies to jump when the result of the computation is 0
+    // j3 specifies to jump when the result of the computation is >0
+    ALU(x=dout,
+        y=mout,
+        zx=instruction[11],
+        nx=instruction[10],
+        zy=instruction[9],
+        ny=instruction[8],
+        f=instruction[7],
+        no=instruction[6],
+        out=aluout,
+        out=outM,
+        zr=zr, ng=ng);
+
+
+    // the jump table for better overview:
+    // | j1 out<0 | j2 (out=0) | j3 (out>0) | Mnemonic | Effect        |
+    // | 0        | 0          | 0          | null     | no jump       |
+    // | 0        | 0          | 1          | JGT      | if out >0 jump| 
+    // | 0        | 1          | 0          | JEQ      | if out=0 jump | 
+    // | 0        | 1          | 1          | JGE      | if out>=0 jump| 
+    // | 1        | 0          | 0          | JLT      | if out<0 jump | 
+    // | 1        | 0          | 1          | JNE      | if out!=0 jump| 
+    // | 1        | 1          | 0          | JLE      | if out<=0 jump| 
+    // | 1        | 1          | 1          | JMP      |               | 
+    // so we jump if
+    // j2 is set and zero is true or
+    And(a=instruction[1],b=zr,out=zerojump);
+
+    // j1 is set and ng is true or
+    And(a=instruction[2],b=ng,out=negativejump);
+
+    // j3 is set and the result is positive
+    Or(a=ng,b=zr,out=zeronegative);
+    Not(in=zeronegative,out=zeropositive);
+    And(a=instruction[0],b=zeropositive,out=positivejump);
+
+    // if any one of these conditions is true
+    Or(a=zerojump, b=negativejump, out=tmpout);
+    Or(a=tmpout, b=positivejump, out=jump);
+
+    // AND the instruction is a c instruction, we jump
+    And(a=jump,b=instruction[15],out=loadaddress);
+
+    // if we are on a c instruction AND d3 is set, we write to memory 
+    And(a=instruction[3],b=instruction[15],out=writeM);
+}

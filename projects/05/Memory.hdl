@@ -1,0 +1,84 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/05/Memory.hdl
+
+/**
+ * The complete address space of the Hack computer's memory,
+ * including RAM and memory-mapped I/O. 
+ * The chip facilitates read and write operations, as follows:
+ *     Read:  out(t) = Memory[address(t)](t)
+ *     Write: if load(t-1) then Memory[address(t-1)](t) = in(t-1)
+ * In words: the chip always outputs the value stored at the memory 
+ * location specified by address. If load==1, the in value is loaded 
+ * into the memory location specified by address. This value becomes 
+ * available through the out output from the next time step onward.
+ * Address space rules:
+ * Only the upper 16K+8K+1 words of the Memory chip are used. 
+ * Access to address>0x6000 is invalid. Access to any address in 
+ * the range 0x4000-0x5FFF results in accessing the screen memory 
+ * map. Access to address 0x6000 results in accessing the keyboard 
+ * memory map. The behavior in these addresses is described in the 
+ * Screen and Keyboard chip specifications given in the book.
+ */
+
+CHIP Memory {
+    IN in[16], load, address[15];
+    OUT out[16];
+
+    PARTS:
+    // Put your code here:
+    // check via the address if we are dealing with keyboard, screen or data memory:
+    // 24576 = 000000000000011 = 0x6000 = keyboard 
+    // 16384 = 000000000000001 = 0x4000 = begin screen   
+    // 24575 = 111111111111101 = 0x5FFF = end screen
+    // keyboard, if last and before-last bit are one 
+    // screen, if last bit is one and before-last bit is not
+    // memory/RAM, if last/MSB bit is zero.
+
+
+    // check what we are dealing with
+    Not(in=address[14],out=notkbd);
+    Not(in=address[13],out=notscreen);
+    //if MSB is zero, load memory
+    And(a=load,b=notkbd,out=loadmemory);
+    // if MSB is one, and MSB-1 is one, load keyboard
+    Nand(a=notkbd,b=address[13],out=loadkbd);
+    // if MSB is one, and MSB-1 is zero, load screen
+    And(a=address[14],b=notscreen,out=loadscreen);
+
+    // execute: check if load bit is one, pass in the selection bit from above. Use this to determine if memory or screen should be loaded and pass this into the respective chip as load bit. Use address bits to load/manipulate the respective memory/screen selection
+    And(a=load,b=loadmemory,out=memory);
+    RAM16K(in=in, load=memory,address[0..13]=address[0..13],out=RAMout);
+    And(a=load,b=loadscreen,out=screen);
+    Screen(in=in,load=screen,address[0..12]=address[0..12],out=screenout);
+
+    //route keyboard output
+    Keyboard(out=kbdout);
+
+/**
+ * 4-way 16-bit multiplexor:
+ * out = a if sel == 00
+ *       b if sel == 01
+ *       c if sel == 10
+ *       d if sel == 11
+ */
+
+    //Use a multiplexor to select the outcome (and don't forget that values are weirdly backwards in the notation above): keyboard for 11, RAM for 01 or 00 and screen for 10
+    Mux4Way16(a=RAMout, b=RAMout, c=screenout, d=kbdout,sel=address[13..14],out=out);
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ }
