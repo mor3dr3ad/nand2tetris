@@ -1,7 +1,4 @@
-"""
-Parses the given command list
-"""
-# check for correct number of arguments:
+"""Parses the given command list."""
 
 
 class Parser:
@@ -12,15 +9,20 @@ class Parser:
         """
         with open(filename, 'r', encoding='utf-8') as file:
             self.commands = file.readlines()
+            self.cleanCommands = []
+            for command in self.commands:
+                cleanCommand = ''.join(command.split('//')[0].split())
+                if cleanCommand != '':
+                    self.cleanCommands.append(cleanCommand)
         self.counter = -1
-        self.currentCommand = self.commands[0]
+        self.currentCommand = ''
 
     def hasMoreCommands(self):
         """
         function to determine if there are
         any more commands in the processed data
         """
-        return self.counter + 1 < len(self.commands)
+        return self.counter + 1 < len(self.cleanCommands)
 
     def advance(self):
         """
@@ -28,11 +30,7 @@ class Parser:
         does not return anything but makes next command the current
         """
         self.counter += 1
-        command = self.commands[self.counter]
-        # strip whitespace and comments
-        clean_command = ''.join(command.split('//')[0].split())
-        # returns '' when comment or whitespace
-        self.currentCommand = clean_command
+        self.currentCommand = self.cleanCommands[self.counter]
 
     def commandType(self):
         """
@@ -73,6 +71,7 @@ class Parser:
         returns the /comp/ mnemonic in the current C-command (28 possibilities)
         Should be called only with C_Command. C_command: dest=comp; jump
         """
+        print(self.currentCommand)
         if self.commandType() == 'C_Command':
             tmp = self.currentCommand
             if '=' in tmp:
@@ -86,8 +85,6 @@ class Parser:
         Should be called only with C_Command
         """
         if self.commandType() == 'C_Command':
-            tmp = self.currentCommand
-            if ';' in tmp:
-                tmp = tmp.split(";")[1]
-            return tmp.split("=")[1]
+            if ';' in self.currentCommand:
+                return self.currentCommand.split(";")[1]
         return ""
